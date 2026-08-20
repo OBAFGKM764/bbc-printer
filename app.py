@@ -7,11 +7,10 @@ st.set_page_config(page_title="BBC 기사 출력기", layout="centered")
 
 st.title("🗞️ BBC 뉴스 A4 인쇄 도우미")
 
-# 글자 크기 조절 바
-font_size = st.slider("🔍 본문 글자 크기를 조절하세요 (기본 14pt)", min_value=10, max_value=24, value=14)
+# [수정됨] 글자 크기 조절 바: 최소값을 8pt로 낮췄습니다.
+font_size = st.slider("🔍 본문 글자 크기를 조절하세요 (기본 14pt)", min_value=8, max_value=24, value=14)
 
 # 인쇄할 때 보기 좋게 만드는 디자인(CSS) 코드
-# !important 를 추가해서 무조건 우리가 설정한 글자 크기가 우선 적용되도록 마법을 걸어줍니다.
 dynamic_style = f"""
 <style>
 @media print {{
@@ -34,23 +33,26 @@ dynamic_style = f"""
     font-weight: bold;
     margin-bottom: 10px;
 }}
-.article-date {{
-    font-size: 12pt !important;
-    color: gray;
+.article-info {{
+    font-size: 11pt !important;
+    color: #555555;
     margin-bottom: 30px;
     border-bottom: 2px solid black;
     padding-bottom: 10px;
+    line-height: 1.5;
 }}
 </style>
 """
 st.markdown(dynamic_style, unsafe_allow_html=True)
 
-# 💡 핵심 해결책: 프로그램이 기사를 까먹지 않도록 '기억 장치(메모리)' 만들기
+# 프로그램이 기사와 통계(글자 수 등)를 까먹지 않도록 메모리 만들기
 if 'article_extracted' not in st.session_state:
     st.session_state.article_extracted = False
     st.session_state.title = ""
     st.session_state.date_text = ""
-    st.session_state.article_text = ""
+    st.session_state.article_html = ""
+    st.session_state.word_count = 0
+    st.session_state.char_count = 0
 
 # 링크 입력 창
 url = st.text_input("BBC 뉴스 링크를 붙여넣으세요:", placeholder="https://www.bbc.com/news/...")
@@ -58,7 +60,6 @@ url = st.text_input("BBC 뉴스 링크를 붙여넣으세요:", placeholder="htt
 if st.button("기사 추출하기"):
     if url:
         try:
-            # BBC 사이트에 접속
             headers = {'User-Agent': 'Mozilla/5.0'}
             res = requests.get(url, headers=headers)
             soup = BeautifulSoup(res.text, 'html.parser')
@@ -69,36 +70,52 @@ if st.button("기사 추출하기"):
 
             # 날짜 찾기
             time_tag = soup.find('time')
-            if time_tag:
-                date_text = time_tag.get_text(strip=True)
-            else:
-                date_text = "날짜 정보를 찾을 수 없습니다"
+            date_text = time_tag.get_text(strip=True) if time_tag else "날짜 정보를 찾을 수 없습니다"
 
-            # 본문 찾기
+            # 본문 찾기 및 단어/글자 수 계산 준비
             paragraphs = soup.find_all('p')
-            article_text = ""
+            article_html = ""
+            raw_text = "" # 글자 수 계산을 위해 순수 텍스트만 모아둘 바구니
+
             for p in paragraphs:
                 text = p.get_text(strip=True)
                 if len(text) > 40: 
-                    article_text += f"<p class='article-text'>{text}</p>"
+                    article_html += f"<p class='article-text'>{text}</p>"
+                    raw_text += text + " " # 순수 텍스트 이어붙이기
 
-            if not article_text:
+            if not article_html:
                 st.error("본문을 찾을 수 없습니다. 올바른 기사 링크인지 확인해주세요.")
             else:
-                # 💡 핵심: 화면에 그리기 전에 메모리에 먼저 저장하기!
+                # [새로운 기능] 단어 수 및 글자 수 계산하기
+                word_count = len(raw_text.split()) # 띄어쓰기 기준으로 단어 개수 세기
+                char_count = len(raw_text.replace(" ", "")) # 띄어쓰기를 제외한 순수 글자 수 세기
+
+                # 메모리에 저장
                 st.session_state.title = title
                 st.session_state.date_text = date_text
-                st.session_state.article_text = article_text
+                st.session_state.article_html = article_html
+                st.session_state.word_count = word_count
+                st.session_state.char_count = char_count
                 st.session_state.article_extracted = True
 
         except Exception as e:
             st.error(f"오류가 발생했습니다: {e}")
 
-# 메모리에 기사가 저장되어 있다면, 언제든(슬라이더를 움직여도) 화면에 다시 그려주기
+# 메모리에 기사가 있다면 화면에 그려주기
 if st.session_state.article_extracted:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(f"<div class='article-title'>{st.session_state.title}</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='article-date'>🕒 기사 날짜: {st.session_state.date_text}</div>", unsafe_allow_html=True)
-    st.markdown(st.session_state.article_text, unsafe_allow_html=True)
     
-    st.success("✅ 이제 글자 크기를 조절해 보세요! 실시간으로 변합니다. 마음에 드는 크기가 되면 브라우저 메뉴에서 '인쇄'를 누르세요.")
+    # 날짜와 단어 수, 글자 수를 보기 좋게 한 줄에(또는 두 줄에) 출력
+    info_text = f"""
+    <div class='article-info'>
+        🕒 기사 날짜: {st.session_state.date_text} <br>
+        📝 단어 수: <b>{st.session_state.word_count:,}</b>개 &nbsp;|&nbsp; 🔤 글자 수(공백 제외): <b>{st.session_state.char_count:,}</b>자
+    </div>
+    """
+    st.markdown(info_text, unsafe_allow_html=True)
+    
+    # 본문 출력
+    st.markdown(st.session_state.article_html, unsafe_allow_html=True)
+    
+    st.success("✅ 완료되었습니다! 글자 크기를 조절한 뒤 브라우저 메뉴에서 '인쇄'를 누르세요.")
