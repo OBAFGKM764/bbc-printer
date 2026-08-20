@@ -5,22 +5,37 @@ from bs4 import BeautifulSoup
 # 페이지 기본 설정
 st.set_page_config(page_title="BBC 기사 출력기", layout="centered")
 
-st.title("🗞️ BBC 뉴스 A4 인쇄 도우미")
-
-# [수정됨] 글자 크기 조절 바: 최소값을 8pt로 낮췄습니다.
+# 글자 크기 조절 바
 font_size = st.slider("🔍 본문 글자 크기를 조절하세요 (기본 14pt)", min_value=8, max_value=24, value=14)
 
 # 인쇄할 때 보기 좋게 만드는 디자인(CSS) 코드
 dynamic_style = f"""
 <style>
-@media print {{
-    header {{visibility: hidden;}} 
-    .stApp {{margin-top: -50px;}}
-    .stButton {{display: none;}} 
-    .stTextInput {{display: none;}} 
-    .stSlider {{display: none;}} 
-    footer {{display: none;}}
+/* 웹 화면에 보이는 앱 제목 디자인 */
+.app-title {{
+    font-size: 32px;
+    font-weight: bold;
+    margin-bottom: 20px;
 }}
+
+@media print {{
+    /* 💡 인쇄 시 불필요한 요소들 '완벽하게' 숨기기 */
+    header {{display: none !important;}} 
+    .app-title {{display: none !important;}} /* 'BBC 뉴스 인쇄 도우미' 앱 제목 숨김 */
+    .stButton {{display: none !important;}} 
+    .stTextInput {{display: none !important;}} 
+    .stSlider {{display: none !important;}} 
+    div[data-testid="stAlert"] {{display: none !important;}} /* 초록색 성공 안내 문구 숨김 */
+    footer {{display: none !important;}}
+    
+    /* 💡 위쪽 쓸데없는 하얀 여백 싹 없애기 */
+    .block-container {{
+        padding-top: 0rem !important; 
+        margin-top: 0rem !important;
+    }}
+}}
+
+/* 기사 본문 디자인 */
 .article-text {{
     font-size: {font_size}pt !important;  
     line-height: 1.8;
@@ -45,7 +60,10 @@ dynamic_style = f"""
 """
 st.markdown(dynamic_style, unsafe_allow_html=True)
 
-# 프로그램이 기사와 통계(글자 수 등)를 까먹지 않도록 메모리 만들기
+# 기존 st.title 대신, 인쇄할 때 숨길 수 있는 이름표(class)를 달아서 화면에만 출력
+st.markdown("<div class='app-title'>🗞️ BBC 뉴스 A4 인쇄 도우미</div>", unsafe_allow_html=True)
+
+# 메모리 만들기
 if 'article_extracted' not in st.session_state:
     st.session_state.article_extracted = False
     st.session_state.title = ""
@@ -72,25 +90,23 @@ if st.button("기사 추출하기"):
             time_tag = soup.find('time')
             date_text = time_tag.get_text(strip=True) if time_tag else "날짜 정보를 찾을 수 없습니다"
 
-            # 본문 찾기 및 단어/글자 수 계산 준비
+            # 본문 찾기 및 통계
             paragraphs = soup.find_all('p')
             article_html = ""
-            raw_text = "" # 글자 수 계산을 위해 순수 텍스트만 모아둘 바구니
+            raw_text = ""
 
             for p in paragraphs:
                 text = p.get_text(strip=True)
                 if len(text) > 40: 
                     article_html += f"<p class='article-text'>{text}</p>"
-                    raw_text += text + " " # 순수 텍스트 이어붙이기
+                    raw_text += text + " "
 
             if not article_html:
                 st.error("본문을 찾을 수 없습니다. 올바른 기사 링크인지 확인해주세요.")
             else:
-                # [새로운 기능] 단어 수 및 글자 수 계산하기
-                word_count = len(raw_text.split()) # 띄어쓰기 기준으로 단어 개수 세기
-                char_count = len(raw_text.replace(" ", "")) # 띄어쓰기를 제외한 순수 글자 수 세기
+                word_count = len(raw_text.split()) 
+                char_count = len(raw_text.replace(" ", ""))
 
-                # 메모리에 저장
                 st.session_state.title = title
                 st.session_state.date_text = date_text
                 st.session_state.article_html = article_html
@@ -103,10 +119,10 @@ if st.button("기사 추출하기"):
 
 # 메모리에 기사가 있다면 화면에 그려주기
 if st.session_state.article_extracted:
-    st.markdown("<br>", unsafe_allow_html=True)
+    # 기사 제목
     st.markdown(f"<div class='article-title'>{st.session_state.title}</div>", unsafe_allow_html=True)
     
-    # 날짜와 단어 수, 글자 수를 보기 좋게 한 줄에(또는 두 줄에) 출력
+    # 기사 날짜 및 단어수/글자수
     info_text = f"""
     <div class='article-info'>
         🕒 기사 날짜: {st.session_state.date_text} <br>
@@ -115,7 +131,8 @@ if st.session_state.article_extracted:
     """
     st.markdown(info_text, unsafe_allow_html=True)
     
-    # 본문 출력
+    # 본문 내용
     st.markdown(st.session_state.article_html, unsafe_allow_html=True)
     
+    # 이 성공 메세지도 화면에만 보이고 인쇄할 땐 사라집니다!
     st.success("✅ 완료되었습니다! 글자 크기를 조절한 뒤 브라우저 메뉴에서 '인쇄'를 누르세요.")
